@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { initializeDatabase, closeDatabase } from './config/database.js';
 import { parseJsonBody } from './utils/body.parser.js';
 import { handleAuthRoutes } from './routes/auth.routes.js';
+import { handleUserRoutes } from './routes/user.routes.js';
 
 dotenv.config();
 
@@ -39,6 +40,11 @@ const requestHandler = async (req, res) => {
     // Route Modules Dispatcher
     if (req.url.startsWith('/api/auth')) {
       const handled = await handleAuthRoutes(req, res);
+      if (handled) return;
+    }
+
+    if (req.url.startsWith('/api/user')) {
+      const handled = await handleUserRoutes(req, res);
       if (handled) return;
     }
 

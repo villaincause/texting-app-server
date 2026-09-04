@@ -7,7 +7,6 @@ node_modules/
 # OS files
 .DS_Store
 Thumbs.db
-schema.sql
 Backend Structure.txt
 SQL Commands.txt
 
