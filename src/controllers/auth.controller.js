@@ -7,15 +7,41 @@ import { generateToken } from '../utils/jwt.js';
 // Send / Generate OTP
 export async function handleSendOtp(req, res) {
   const { phoneNumber } = req.body || {};
+
   if (!phoneNumber) {
     res.writeHead(400);
-    return res.end(JSON.stringify({ error: 'Phone number is required' }));
+    return res.end(
+      JSON.stringify({
+        error: "Phone number is required",
+      }),
+    );
   }
 
-  const otp = generateOTP(phoneNumber);
-  
-  res.writeHead(200);
-  return res.end(JSON.stringify({ message: 'OTP sent successfully', otp })); 
+  try {
+    await generateOTP(phoneNumber);
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        message: "OTP sent successfully",
+      }),
+    );
+  } catch (err) {
+    console.error("Send OTP Error:", err);
+
+    res.writeHead(500, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        error: "Failed to send OTP",
+      }),
+    );
+  }
 }
 
 // Register User
