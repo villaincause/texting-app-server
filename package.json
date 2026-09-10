@@ -4,9 +4,9 @@
   "type": "module",
   "main": "src/app.js",
   "scripts": {
-  "start": "node src/app.js",
-  "dev": "nodemon src/app.js"
-},
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -17,6 +17,7 @@
     "firebase-admin": "^13.10.0",
     "jsonwebtoken": "^9.0.3",
     "oracledb": "^7.0.1",
+    "twilio": "^6.1.1",
     "ws": "^8.21.3"
   },
   "devDependencies": {
