@@ -1,7 +1,4 @@
-import twilio from "twilio";
 import { config } from "../config/env.js";
-
-const client = twilio(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN);
 
 const otpStore = new Map();
 
@@ -17,11 +14,25 @@ export const generateOTP = async (phoneNumber) => {
     expiresAt: Date.now() + OTP_EXPIRY,
   });
 
-  await client.messages.create({
-    body: `sms_2fa`,
-    from: config.TWILIO_PHONE_NUMBER,
-    to: cleanPhoneNumber,
+  const response = await fetch("http://bulksmsbd.net/api/smsapi", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      api_key: config.BULKSMSBD_API_KEY,
+      senderid: config.BULKSMSBD_SENDER_ID,
+      number: cleanPhoneNumber,
+      message: `Your Texting App verification code is ${otp}`,
+    }),
   });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    otpStore.delete(cleanPhoneNumber);
+    throw new Error("Failed to send OTP");
+  }
 
   return true;
 };

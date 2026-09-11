@@ -9,7 +9,6 @@ export const config = {
   DB_PASSWORD: process.env.DB_PASSWORD,
   DB_CONNECT_STRING: process.env.DB_CONNECT_STRING,
   JWT_SECRET: process.env.JWT_SECRET || "default_secret",
-  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-  TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+  BULKSMSBD_API_KEY: process.env.BULKSMSBD_API_KEY,
+  BULKSMSBD_SENDER_ID: process.env.BULKSMSBD_SENDER_ID,
 };
