@@ -44,6 +44,62 @@ export async function handleSendOtp(req, res) {
   }
 }
 
+export async function handleVerifyOtp(req, res) {
+  const { phoneNumber, otp } = req.body || {};
+
+  if (!phoneNumber || !otp) {
+    res.writeHead(400, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        error: "Phone number and OTP are required",
+      }),
+    );
+  }
+
+  try {
+    const cleanPhoneNumber = phoneNumber.replace(/\s/g, "");
+
+    const isValid = verifyOTP(cleanPhoneNumber, otp);
+
+    if (!isValid) {
+      res.writeHead(400, {
+        "Content-Type": "application/json",
+      });
+
+      return res.end(
+        JSON.stringify({
+          error: "Invalid or expired OTP",
+        }),
+      );
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        message: "OTP verified successfully",
+      }),
+    );
+  } catch (error) {
+    console.error("Verify OTP Error:", error);
+
+    res.writeHead(500, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        error: "Failed to verify OTP",
+      }),
+    );
+  }
+}
+
 // Register User
 export async function handleRegister(req, res) {
   const { username, email, phoneNumber, password, fullName, otp } = req.body || {};
