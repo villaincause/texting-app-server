@@ -7,15 +7,97 @@ import { generateToken } from '../utils/jwt.js';
 // Send / Generate OTP
 export async function handleSendOtp(req, res) {
   const { phoneNumber } = req.body || {};
+
   if (!phoneNumber) {
     res.writeHead(400);
-    return res.end(JSON.stringify({ error: 'Phone number is required' }));
+    return res.end(
+      JSON.stringify({
+        error: "Phone number is required",
+      }),
+    );
   }
 
-  const otp = generateOTP(phoneNumber);
-  
-  res.writeHead(200);
-  return res.end(JSON.stringify({ message: 'OTP sent successfully', otp })); 
+  try {
+    await generateOTP(phoneNumber);
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        message: "OTP sent successfully",
+      }),
+    );
+  } catch (err) {
+    console.error("Send OTP Error:", err);
+
+    res.writeHead(500, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        error: "Failed to send OTP",
+      }),
+    );
+  }
+}
+
+export async function handleVerifyOtp(req, res) {
+  const { phoneNumber, otp } = req.body || {};
+
+  if (!phoneNumber || !otp) {
+    res.writeHead(400, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        error: "Phone number and OTP are required",
+      }),
+    );
+  }
+
+  try {
+    const cleanPhoneNumber = phoneNumber.replace(/\s/g, "");
+
+    const isValid = verifyOTP(cleanPhoneNumber, otp);
+
+    if (!isValid) {
+      res.writeHead(400, {
+        "Content-Type": "application/json",
+      });
+
+      return res.end(
+        JSON.stringify({
+          error: "Invalid or expired OTP",
+        }),
+      );
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        message: "OTP verified successfully",
+      }),
+    );
+  } catch (error) {
+    console.error("Verify OTP Error:", error);
+
+    res.writeHead(500, {
+      "Content-Type": "application/json",
+    });
+
+    return res.end(
+      JSON.stringify({
+        error: "Failed to verify OTP",
+      }),
+    );
+  }
 }
 
 // Register User
