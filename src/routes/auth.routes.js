@@ -1,11 +1,22 @@
 import {
+  handleCheckPhone,
   handleSendOtp,
   handleVerifyOtp,
+  handleCheckUsername,
   handleRegister,
   handleLogin,
 } from "../controllers/auth.controller.js";
 
 export async function handleAuthRoutes(req, res) {
+  if (req.url === "/api/auth/check-phone" && req.method === "POST") {
+    await handleCheckPhone(req, res);
+    return true;
+  }
+  if (req.url === "/api/auth/check-username" && req.method === "POST") {
+    await handleCheckUsername(req, res);
+    return true;
+  }
+
   if (req.url === "/api/auth/send-otp" && req.method === "POST") {
     await handleSendOtp(req, res);
     return true;

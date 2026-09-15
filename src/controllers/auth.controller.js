@@ -1,261 +1,521 @@
-import bcrypt from 'bcrypt';
-import oracledb from 'oracledb';
-import { getConnection } from '../config/database.js';
-import { generateOTP, verifyOTP } from '../services/otp.service.js';
-import { generateToken } from '../utils/jwt.js';
+import bcrypt from "bcrypt";
+import oracledb from "oracledb";
+import { getConnection } from "../config/database.js";
+import { generateOTP, verifyOTP } from "../services/otp.service.js";
+import { generateToken } from "../utils/jwt.js";
 
-// Send / Generate OTP
-export async function handleSendOtp(req, res) {
-  const { phoneNumber } = req.body || {};
+// Constants
 
-  if (!phoneNumber) {
-    res.writeHead(400);
-    return res.end(
-      JSON.stringify({
-        error: "Phone number is required",
-      }),
+const OTP_PURPOSES = Object.freeze({
+  LOGIN: "LOGIN",
+  REGISTRATION: "REGISTRATION",
+});
+
+const PHONE_REGEX = /^\+8801[3-9]\d{8}$/;
+
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json",
+  });
+
+  res.end(JSON.stringify(payload));
+}
+
+
+function normalizePhoneNumber(phoneNumber) {
+  return typeof phoneNumber === "string"
+    ? phoneNumber.replace(/\s/g, "").trim()
+    : phoneNumber;
+}
+
+// Utility Functions
+
+function isValidOtpPurpose(purpose) {
+  return Object.values(OTP_PURPOSES).includes(purpose);
+}
+
+function isValidPhoneNumber(phoneNumber) {
+  return typeof phoneNumber === "string" && PHONE_REGEX.test(phoneNumber);
+}
+
+async function findUserByPhoneNumber(phoneNumber) {
+  const connection = await getConnection();
+
+  try {
+    const result = await connection.execute(
+      `
+        SELECT USER_ID
+        FROM USERS
+        WHERE PHONE_NUMBER = :phoneNumber
+      `,
+      {
+        phoneNumber,
+      },
     );
+
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } finally {
+    try {
+      await connection.close();
+    } catch (closeErr) {
+      console.error("Failed to close DB connection:", closeErr);
+    }
+  }
+}
+
+// Controller Functions
+
+
+export async function handleCheckPhone(req, res) {
+  const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
+
+  if (!isValidPhoneNumber(phoneNumber)) {
+    return sendJson(res, 400, {
+      error: "A valid Bangladesh phone number is required",
+    });
   }
 
   try {
-    await generateOTP(phoneNumber);
+    const user = await findUserByPhoneNumber(phoneNumber);
 
-    res.writeHead(200, {
-      "Content-Type": "application/json",
+    return sendJson(res, 200, {
+      exists: Boolean(user),
     });
+  } catch (err) {
+    console.error("Check Phone Error:", err);
 
-    return res.end(
-      JSON.stringify({
+    return sendJson(res, 500, {
+      error: "Failed to check phone number",
+    });
+  }
+}
+
+export async function handleSendOtp(req, res) {
+  const purpose = req.body?.purpose;
+  const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
+
+  if (!isValidPhoneNumber(phoneNumber)) {
+    return sendJson(res, 400, {
+      error: "A valid Bangladesh phone number is required",
+    });
+  }
+
+  if (!isValidOtpPurpose(purpose)) {
+    return sendJson(res, 400, {
+      error: "Invalid OTP purpose",
+    });
+  }
+
+  try {
+    const user = await findUserByPhoneNumber(phoneNumber);
+    const userExists = Boolean(user);
+
+    if (purpose === OTP_PURPOSES.LOGIN) {
+      if (!userExists) {
+        return sendJson(res, 200, {
+          exists: false,
+        });
+      }
+
+      await generateOTP(phoneNumber, OTP_PURPOSES.LOGIN);
+
+      return sendJson(res, 200, {
+        exists: true,
         message: "OTP sent successfully",
-      }),
-    );
+      });
+    }
+
+    if (purpose === OTP_PURPOSES.REGISTRATION) {
+      if (userExists) {
+        return sendJson(res, 409, {
+          error: "An account already exists with this phone number",
+        });
+      }
+
+      await generateOTP(phoneNumber, OTP_PURPOSES.REGISTRATION);
+
+      return sendJson(res, 200, {
+        message: "OTP sent successfully",
+      });
+    }
   } catch (err) {
     console.error("Send OTP Error:", err);
 
-    res.writeHead(500, {
-      "Content-Type": "application/json",
+    return sendJson(res, 500, {
+      error: "Failed to process phone number",
     });
+  }
+}
 
-    return res.end(
-      JSON.stringify({
-        error: "Failed to send OTP",
-      }),
-    );
+export async function handleCheckUsername(req, res) {
+  try {
+    const body = req.body || {};
+    const username = body.username?.trim().toLowerCase();
+
+    if (!username) {
+      return sendJson(res, 400, {
+        message: "Username is required",
+      });
+    }
+
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+      return sendJson(res, 400, {
+        message:
+          "Username must be 3–20 characters and can only contain letters, numbers, and underscores.",
+      });
+    }
+
+    const connection = await getConnection();
+
+    try {
+      const result = await connection.execute(
+        `
+          SELECT USER_ID
+          FROM USERS
+          WHERE LOWER(USERNAME) = :username
+            AND ACCOUNT_STATUS != 'DELETED'
+        `,
+        {
+          username,
+        },
+      );
+
+      return sendJson(res, 200, {
+        available: result.rows.length === 0,
+      });
+    } finally {
+      await connection.close();
+    }
+  } catch (error) {
+    console.error("Check username error:", error);
+
+    return sendJson(res, 500, {
+      message: "Unable to check username",
+    });
   }
 }
 
 export async function handleVerifyOtp(req, res) {
-  const { phoneNumber, otp } = req.body || {};
+  const purpose = req.body?.purpose;
+  const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
 
-  if (!phoneNumber || !otp) {
-    res.writeHead(400, {
-      "Content-Type": "application/json",
+  const otp =
+    typeof req.body?.otp === "string" ? req.body.otp.trim() : req.body?.otp;
+
+  if (!isValidPhoneNumber(phoneNumber)) {
+    return sendJson(res, 400, {
+      error: "A valid Bangladesh phone number is required",
     });
+  }
 
-    return res.end(
-      JSON.stringify({
-        error: "Phone number and OTP are required",
-      }),
-    );
+  if (!otp) {
+    return sendJson(res, 400, {
+      error: "OTP is required",
+    });
+  }
+
+  if (!isValidOtpPurpose(purpose)) {
+    return sendJson(res, 400, {
+      error: "Invalid OTP purpose",
+    });
   }
 
   try {
-    const cleanPhoneNumber = phoneNumber.replace(/\s/g, "");
-
-    const isValid = verifyOTP(cleanPhoneNumber, otp);
+    const isValid = await verifyOTP(phoneNumber, otp, purpose);
 
     if (!isValid) {
-      res.writeHead(400, {
-        "Content-Type": "application/json",
+      return sendJson(res, 400, {
+        error: "Invalid or expired OTP",
       });
-
-      return res.end(
-        JSON.stringify({
-          error: "Invalid or expired OTP",
-        }),
-      );
     }
 
-    res.writeHead(200, {
-      "Content-Type": "application/json",
+    return sendJson(res, 200, {
+      message: "OTP verified successfully",
+      purpose,
     });
-
-    return res.end(
-      JSON.stringify({
-        message: "OTP verified successfully",
-      }),
-    );
   } catch (error) {
     console.error("Verify OTP Error:", error);
 
-    res.writeHead(500, {
-      "Content-Type": "application/json",
+    return sendJson(res, 500, {
+      error: "Failed to verify OTP",
     });
-
-    return res.end(
-      JSON.stringify({
-        error: "Failed to verify OTP",
-      }),
-    );
   }
 }
 
-// Register User
 export async function handleRegister(req, res) {
-  const { username, email, phoneNumber, password, fullName, otp } = req.body || {};
+  const {
+    username,
+    email,
+    phoneNumber: rawPhoneNumber,
+    password,
+    fullName,
+    otp,
+  } = req.body || {};
+
+  const phoneNumber = normalizePhoneNumber(rawPhoneNumber);
 
   if (!username || !phoneNumber || !password || !otp) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({ error: 'Username, phone number, password, and OTP are required' }));
+    return sendJson(res, 400, {
+      error: "Username, phone number, password, and OTP are required",
+    });
   }
 
-  // Verify OTP
-  const isValidOtp = verifyOTP(phoneNumber, otp);
-  if (!isValidOtp) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({ error: 'Invalid or expired OTP' }));
+  if (!isValidPhoneNumber(phoneNumber)) {
+    return sendJson(res, 400, {
+      error: "A valid Bangladesh phone number is required",
+    });
   }
 
-  let connection;
   try {
-    connection = await getConnection();
+    const isValidOtp = await verifyOTP(
+      phoneNumber,
+      otp,
+      OTP_PURPOSES.REGISTRATION,
+    );
 
-    // Check if username or phone exists
-    const checkSql = `SELECT USERNAME, PHONE_NUMBER FROM USERS WHERE USERNAME = :username OR PHONE_NUMBER = :phoneNumber`;
-    const checkResult = await connection.execute(checkSql, { username, phoneNumber });
-
-    if (checkResult.rows && checkResult.rows.length > 0) {
-      res.writeHead(409);
-      return res.end(JSON.stringify({ error: 'Username or Phone Number already registered' }));
+    if (!isValidOtp) {
+      return sendJson(res, 400, {
+        error: "Invalid or expired OTP",
+      });
     }
 
-    // Hash Password
-    const passwordHash = await bcrypt.hash(password, 10);
+    const connection = await getConnection();
 
-    // Insert into USERS table
-    const insertSql = `
-      INSERT INTO USERS (USERNAME, EMAIL, PHONE_NUMBER, PASSWORD_HASH, FULL_NAME)
-      VALUES (:username, :email, :phoneNumber, :passwordHash, :fullName)
-      RETURNING USER_ID INTO :userId
-    `;
+    try {
+      const checkSql = `
+        SELECT USERNAME, PHONE_NUMBER
+        FROM USERS
+        WHERE USERNAME = :username
+        OR PHONE_NUMBER = :phoneNumber
+      `;
 
-    const result = await connection.execute(
-      insertSql,
-      {
+      const checkResult = await connection.execute(
+        checkSql,
+        {
+          username,
+          phoneNumber,
+        },
+        {
+          outFormat: oracledb.OUT_FORMAT_OBJECT,
+        },
+      );
+
+      if (checkResult.rows && checkResult.rows.length > 0) {
+        return sendJson(res, 409, {
+          error: "Username or phone number already registered",
+        });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      const insertSql = `
+        INSERT INTO USERS (
+          USERNAME,
+          EMAIL,
+          PHONE_NUMBER,
+          PASSWORD_HASH,
+          FULL_NAME
+        )
+        VALUES (
+          :username,
+          :email,
+          :phoneNumber,
+          :passwordHash,
+          :fullName
+        )
+        RETURNING USER_ID INTO :userId
+      `;
+
+      const result = await connection.execute(insertSql, {
         username,
         email: email || null,
         phoneNumber,
         passwordHash,
         fullName: fullName || null,
-        userId: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
+        userId: {
+          dir: oracledb.BIND_OUT,
+          type: oracledb.NUMBER,
+        },
+      });
+
+      const newUserId = result.outBinds.userId[0];
+
+      const token = generateToken({
+        userId: newUserId,
+        username,
+      });
+
+      await connection.execute(
+        `
+          UPDATE USERS
+          SET LAST_SEEN = CURRENT_TIMESTAMP
+          WHERE USER_ID = :userId
+        `,
+        {
+          userId: newUserId,
+        },
+      );
+
+      await connection.commit();
+
+      return sendJson(res, 201, {
+        message: "User registered successfully",
+        token,
+        user: {
+          userId: newUserId,
+          username,
+          email: email || null,
+          phoneNumber,
+          fullName: fullName || null,
+        },
+      });
+    } catch (err) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error("Rollback error:", rollbackError);
       }
-    );
 
-    // Explicitly commit transaction
-    await connection.commit();
-
-    const newUserId = result.outBinds.userId[0];
-
-    res.writeHead(201);
-    return res.end(JSON.stringify({ 
-      message: 'User registered successfully', 
-      userId: newUserId 
-    }));
-
-  } catch (err) {
-    console.error('Registration Error Details:', err);
-    if (connection) {
-      try { await connection.rollback(); } catch (rErr) { console.error('Rollback error:', rErr); }
-    }
-    res.writeHead(500);
-    return res.end(JSON.stringify({ error: 'Failed to register user', details: err.message }));
-  } finally {
-    if (connection) {
+      throw err;
+    } finally {
       try {
         await connection.close();
-      } catch (err) {
-        console.error('Connection close error:', err);
+      } catch (closeErr) {
+        console.error("Connection close error:", closeErr);
       }
     }
+  } catch (err) {
+    console.error("Registration Error:", err);
+
+    return sendJson(res, 500, {
+      error: "Failed to register user",
+    });
   }
 }
 
-// Login User
 export async function handleLogin(req, res) {
-  const { identifier, password } = req.body || {};
+  const { identifier, password, otp } = req.body || {};
 
-  if (!identifier || !password) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({ error: 'Username/Email/Phone and password are required' }));
+  if (!identifier || !password || !otp) {
+    return sendJson(res, 400, {
+      error: "Username/Email/Phone, password, and OTP are required",
+    });
   }
 
   let connection;
+
   try {
     connection = await getConnection();
 
-    // Find user by username, email, or phone number
     const sql = `
-      SELECT USER_ID, USERNAME, EMAIL, PHONE_NUMBER, PASSWORD_HASH, FULL_NAME, ACCOUNT_STATUS
+      SELECT
+        USER_ID,
+        USERNAME,
+        EMAIL,
+        PHONE_NUMBER,
+        PASSWORD_HASH,
+        FULL_NAME,
+        ACCOUNT_STATUS
       FROM USERS
-      WHERE USERNAME = :identifier OR EMAIL = :identifier OR PHONE_NUMBER = :identifier
+      WHERE USERNAME = :identifier
+      OR EMAIL = :identifier
+      OR PHONE_NUMBER = :identifier
     `;
 
-    const result = await connection.execute(sql, { identifier }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const result = await connection.execute(
+      sql,
+      {
+        identifier,
+      },
+      {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+      },
+    );
 
     if (!result.rows || result.rows.length === 0) {
-      res.writeHead(401);
-      return res.end(JSON.stringify({ error: 'Invalid credentials' }));
+      return sendJson(res, 401, {
+        error: "Invalid credentials",
+      });
     }
 
     const user = result.rows[0];
 
-    // Check account status
-    if (user.ACCOUNT_STATUS !== 'ACTIVE') {
-      res.writeHead(403);
-      return res.end(JSON.stringify({ error: 'Account is deactivated or suspended' }));
+    if (user.ACCOUNT_STATUS !== "ACTIVE") {
+      return sendJson(res, 403, {
+        error: "Account is deactivated or suspended",
+      });
     }
 
-    // Verify Password
     const isPasswordValid = await bcrypt.compare(password, user.PASSWORD_HASH);
+
     if (!isPasswordValid) {
-      res.writeHead(401);
-      return res.end(JSON.stringify({ error: 'Invalid credentials' }));
+      return sendJson(res, 401, {
+        error: "Invalid credentials",
+      });
     }
 
-    // Generate JWT Token
+    const isOtpValid = await verifyOTP(
+      user.PHONE_NUMBER,
+      otp,
+      OTP_PURPOSES.LOGIN,
+    );
+
+    if (!isOtpValid) {
+      return sendJson(res, 401, {
+        error: "Invalid or expired OTP",
+      });
+    }
+
     const token = generateToken({
       userId: user.USER_ID,
-      username: user.USERNAME
+      username: user.USERNAME,
     });
 
-    // Update Last Login / Online Timestamp in DB
-    const updateLastSeenSql = `UPDATE USERS SET LAST_SEEN = CURRENT_TIMESTAMP WHERE USER_ID = :userId`;
-    await connection.execute(updateLastSeenSql, { userId: user.USER_ID });
+    await connection.execute(
+      `
+        UPDATE USERS
+        SET LAST_SEEN = CURRENT_TIMESTAMP
+        WHERE USER_ID = :userId
+      `,
+      {
+        userId: user.USER_ID,
+      },
+    );
+
     await connection.commit();
 
-    res.writeHead(200);
-    return res.end(JSON.stringify({
-      message: 'Login successful',
+    return sendJson(res, 200, {
+      message: "Login successful",
       token,
       user: {
         userId: user.USER_ID,
         username: user.USERNAME,
         email: user.EMAIL,
         phoneNumber: user.PHONE_NUMBER,
-        fullName: user.FULL_NAME
-      }
-    }));
-
+        fullName: user.FULL_NAME,
+      },
+    });
   } catch (err) {
-    console.error('Login Error:', err);
+    console.error("Login Error:", err);
+
     if (connection) {
-      try { await connection.rollback(); } catch (rErr) { console.error('Rollback error:', rErr); }
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error("Rollback error:", rollbackError);
+      }
     }
-    res.writeHead(500);
-    return res.end(JSON.stringify({ error: 'Failed to process login' }));
+
+    return sendJson(res, 500, {
+      error: "Failed to process login",
+    });
   } finally {
     if (connection) {
-      try { await connection.close(); } catch (err) { console.error('Connection close error:', err); }
+      try {
+        await connection.close();
+      } catch (closeErr) {
+        console.error("Connection close error:", closeErr);
+      }
     }
   }
 }
