@@ -5,6 +5,8 @@ import { parseJsonBody } from "./utils/body.parser.js";
 import { handleAuthRoutes } from "./routes/auth.routes.js";
 import { handleUserRoutes } from "./routes/user.routes.js";
 import { handleContactRoutes } from "./routes/contact.routes.js";
+import { handleChatRoutes } from './routes/chat.routes.js';
+import { handleMessageRoutes } from "./routes/message.routes.js";
 
 const PORT = config.PORT;
 
@@ -26,7 +28,7 @@ const requestHandler = async (req, res) => {
   }
 
   try {
-    // Parse request body for POST, PUT, PATCH methods
+    // Parse request body ONCE centrally for incoming payloads
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
       req.body = await parseJsonBody(req);
     } else {
@@ -60,7 +62,17 @@ const requestHandler = async (req, res) => {
       if (handled) return;
     }
 
-    // 404 Not Found Fallback (inside try block)
+    if (req.url.startsWith('/api/chats')) {
+      const handled = await handleChatRoutes(req, res);
+      if (handled) return;
+    }
+
+    if (req.url.startsWith("/api/messages")) {
+      const handled = await handleMessageRoutes(req, res);
+      if (handled) return;
+    }
+
+    // 404 Not Found Fallback
     if (!res.headersSent) {
       res.writeHead(404);
       return res.end(JSON.stringify({ error: "Route not found" }));
@@ -68,9 +80,9 @@ const requestHandler = async (req, res) => {
   } catch (err) {
     console.error("Request Error:", err);
     if (!res.headersSent) {
-      res.writeHead(400);
+      res.writeHead(500);
       return res.end(
-        JSON.stringify({ error: err.message || "Malformed or invalid request" })
+        JSON.stringify({ error: err.message || "Internal Server Error" })
       );
     }
   }
