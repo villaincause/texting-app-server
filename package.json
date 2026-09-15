@@ -17,6 +17,7 @@
     "firebase-admin": "^13.10.0",
     "jsonwebtoken": "^9.0.3",
     "oracledb": "^7.0.1",
+    "react-native-contacts": "^8.0.10",
     "ws": "^8.21.3"
   },
   "devDependencies": {

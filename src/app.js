@@ -4,6 +4,7 @@ import { initializeDatabase, closeDatabase } from "./config/database.js";
 import { parseJsonBody } from "./utils/body.parser.js";
 import { handleAuthRoutes } from "./routes/auth.routes.js";
 import { handleUserRoutes } from "./routes/user.routes.js";
+import { handleContactRoutes } from "./routes/contact.routes.js";
 
 const PORT = config.PORT;
 
@@ -14,7 +15,7 @@ const requestHandler = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS",
+    "GET, POST, PUT, DELETE, OPTIONS"
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
@@ -39,7 +40,7 @@ const requestHandler = async (req, res) => {
         JSON.stringify({
           status: "OK",
           message: "Server & DB Pool operational",
-        }),
+        })
       );
     }
 
@@ -54,15 +55,24 @@ const requestHandler = async (req, res) => {
       if (handled) return;
     }
 
-    // 404 Not Found Fallback
-    res.writeHead(404);
-    res.end(JSON.stringify({ error: "Route not found" }));
+    if (req.url.startsWith("/api/contacts")) {
+      const handled = await handleContactRoutes(req, res);
+      if (handled) return;
+    }
+
+    // 404 Not Found Fallback (inside try block)
+    if (!res.headersSent) {
+      res.writeHead(404);
+      return res.end(JSON.stringify({ error: "Route not found" }));
+    }
   } catch (err) {
     console.error("Request Error:", err);
-    res.writeHead(400);
-    res.end(
-      JSON.stringify({ error: err.message || "Malformed or invalid request" }),
-    );
+    if (!res.headersSent) {
+      res.writeHead(400);
+      return res.end(
+        JSON.stringify({ error: err.message || "Malformed or invalid request" })
+      );
+    }
   }
 };
 
@@ -75,7 +85,7 @@ async function startServer() {
 
   server.listen(PORT, () => {
     console.log(
-      `Server running in ${config.NODE_ENV || "development"} mode on port ${PORT}`,
+      `Server running in ${config.NODE_ENV || "development"} mode on port ${PORT}`
     );
   });
 }
