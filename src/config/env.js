@@ -11,4 +11,7 @@ export const config = {
   JWT_SECRET: process.env.JWT_SECRET || "default_secret",
   BULKSMSBD_API_KEY: process.env.BULKSMSBD_API_KEY,
   BULKSMSBD_SENDER_ID: process.env.BULKSMSBD_SENDER_ID,
+  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
+  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
 };

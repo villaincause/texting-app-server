@@ -5,8 +5,9 @@ import { parseJsonBody } from "./utils/body.parser.js";
 import { handleAuthRoutes } from "./routes/auth.routes.js";
 import { handleUserRoutes } from "./routes/user.routes.js";
 import { handleContactRoutes } from "./routes/contact.routes.js";
-import { handleChatRoutes } from './routes/chat.routes.js';
+import { handleChatRoutes } from "./routes/chat.routes.js";
 import { handleMessageRoutes } from "./routes/message.routes.js";
+import { handleMediaRoutes } from "./routes/media.routes.js";
 
 const PORT = config.PORT;
 
@@ -17,7 +18,7 @@ const requestHandler = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
+    "GET, POST, PUT, DELETE, OPTIONS",
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
@@ -42,13 +43,17 @@ const requestHandler = async (req, res) => {
         JSON.stringify({
           status: "OK",
           message: "Server & DB Pool operational",
-        })
+        }),
       );
     }
 
     // Route Modules Dispatcher
     if (req.url.startsWith("/api/auth")) {
       const handled = await handleAuthRoutes(req, res);
+      if (handled) return;
+    }
+    if (req.url.startsWith("/api/media")) {
+      const handled = await handleMediaRoutes(req, res);
       if (handled) return;
     }
 
@@ -62,7 +67,7 @@ const requestHandler = async (req, res) => {
       if (handled) return;
     }
 
-    if (req.url.startsWith('/api/chats')) {
+    if (req.url.startsWith("/api/chats")) {
       const handled = await handleChatRoutes(req, res);
       if (handled) return;
     }
@@ -82,7 +87,7 @@ const requestHandler = async (req, res) => {
     if (!res.headersSent) {
       res.writeHead(500);
       return res.end(
-        JSON.stringify({ error: err.message || "Internal Server Error" })
+        JSON.stringify({ error: err.message || "Internal Server Error" }),
       );
     }
   }
@@ -97,7 +102,7 @@ async function startServer() {
 
   server.listen(PORT, () => {
     console.log(
-      `Server running in ${config.NODE_ENV || "development"} mode on port ${PORT}`
+      `Server running in ${config.NODE_ENV || "development"} mode on port ${PORT}`,
     );
   });
 }
