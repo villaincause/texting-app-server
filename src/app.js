@@ -29,8 +29,14 @@ const requestHandler = async (req, res) => {
   }
 
   try {
-    // Parse request body ONCE centrally for incoming payloads
-    if (["POST", "PUT", "PATCH"].includes(req.method)) {
+    // Parse JSON bodies centrally.
+    // Multipart uploads must remain as streams for Busboy.
+    const contentType = req.headers["content-type"] || "";
+
+    if (
+      ["POST", "PUT", "PATCH"].includes(req.method) &&
+      !contentType.toLowerCase().includes("multipart/form-data")
+    ) {
       req.body = await parseJsonBody(req);
     } else {
       req.body = {};

@@ -3,6 +3,7 @@ import oracledb from "oracledb";
 import { getConnection } from "../config/database.js";
 import { generateOTP, verifyOTP } from "../services/otp.service.js";
 import { generateToken } from "../utils/jwt.js";
+import { config } from "../config/env.js";
 
 // Constants
 
@@ -20,7 +21,6 @@ function sendJson(res, statusCode, payload) {
 
   res.end(JSON.stringify(payload));
 }
-
 
 function normalizePhoneNumber(phoneNumber) {
   return typeof phoneNumber === "string"
@@ -64,7 +64,6 @@ async function findUserByPhoneNumber(phoneNumber) {
 }
 
 // Controller Functions
-
 
 export async function handleCheckPhone(req, res) {
   const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
@@ -244,29 +243,87 @@ export async function handleVerifyOtp(req, res) {
 
 export async function handleRegister(req, res) {
   const {
-    username,
+    username: rawUsername,
     email,
     phoneNumber: rawPhoneNumber,
     password,
     fullName,
     otp,
+    profilePicture: rawProfilePicture,
   } = req.body || {};
+
+  const username =
+    typeof rawUsername === "string" ? rawUsername.trim().toLowerCase() : "";
 
   const phoneNumber = normalizePhoneNumber(rawPhoneNumber);
 
+  const profilePicture =
+    typeof rawProfilePicture === "string" ? rawProfilePicture.trim() : null;
+
+  // Required fields
   if (!username || !phoneNumber || !password || !otp) {
     return sendJson(res, 400, {
       error: "Username, phone number, password, and OTP are required",
     });
   }
 
+  // Validate username
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+    return sendJson(res, 400, {
+      error:
+        "Username must be 4-20 characters and can only contain letters, numbers, and underscores.",
+    });
+  }
+
+  // Validate phone number
   if (!isValidPhoneNumber(phoneNumber)) {
     return sendJson(res, 400, {
       error: "A valid Bangladesh phone number is required",
     });
   }
 
+  // Validate password length
+  if (
+    typeof password !== "string" ||
+    password.length < 8 ||
+    password.length > 20
+  ) {
+    return sendJson(res, 400, {
+      error: "Password must be between 8 and 20 characters",
+    });
+  }
+
+  // Validate Cloudinary profile picture URL, if supplied
+  if (profilePicture) {
+    try {
+      const imageUrl = new URL(profilePicture);
+      const cloudName = config.CLOUDINARY_CLOUD_NAME;
+
+      const expectedPathPrefix = `/${cloudName}/image/upload/`;
+
+      const isValidCloudinaryUrl =
+        imageUrl.protocol === "https:" &&
+        imageUrl.hostname === "res.cloudinary.com" &&
+        imageUrl.pathname.startsWith(expectedPathPrefix) &&
+        imageUrl.pathname.includes("/texting-app/");
+
+      if (!isValidCloudinaryUrl) {
+        return sendJson(res, 400, {
+          error:
+            "A valid profile picture URL from your Cloudinary account is required",
+        });
+      }
+    } catch {
+      return sendJson(res, 400, {
+        error: "Invalid profile picture URL",
+      });
+    }
+  }
+
+  let connection;
+
   try {
+    // Verify registration OTP
     const isValidOtp = await verifyOTP(
       phoneNumber,
       otp,
@@ -279,117 +336,126 @@ export async function handleRegister(req, res) {
       });
     }
 
-    const connection = await getConnection();
+    connection = await getConnection();
 
-    try {
-      const checkSql = `
-        SELECT USERNAME, PHONE_NUMBER
-        FROM USERS
-        WHERE USERNAME = :username
-        OR PHONE_NUMBER = :phoneNumber
-      `;
+    // Check for existing username or phone number
+    const checkSql = `
+      SELECT USERNAME, PHONE_NUMBER
+      FROM USERS
+      WHERE LOWER(USERNAME) = :username
+         OR PHONE_NUMBER = :phoneNumber
+    `;
 
-      const checkResult = await connection.execute(
-        checkSql,
-        {
-          username,
-          phoneNumber,
-        },
-        {
-          outFormat: oracledb.OUT_FORMAT_OBJECT,
-        },
-      );
+    const checkResult = await connection.execute(
+      checkSql,
+      {
+        username,
+        phoneNumber,
+      },
+      {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+      },
+    );
 
-      if (checkResult.rows && checkResult.rows.length > 0) {
-        return sendJson(res, 409, {
-          error: "Username or phone number already registered",
-        });
-      }
+    if (checkResult.rows && checkResult.rows.length > 0) {
+      return sendJson(res, 409, {
+        error: "Username or phone number already registered",
+      });
+    }
 
-      const passwordHash = await bcrypt.hash(password, 10);
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
 
-      const insertSql = `
-        INSERT INTO USERS (
-          USERNAME,
-          EMAIL,
-          PHONE_NUMBER,
-          PASSWORD_HASH,
-          FULL_NAME
-        )
-        VALUES (
-          :username,
-          :email,
-          :phoneNumber,
-          :passwordHash,
-          :fullName
-        )
-        RETURNING USER_ID INTO :userId
-      `;
+    // Insert user, including the Cloudinary profile picture URL
+    const insertSql = `
+      INSERT INTO USERS (
+        USERNAME,
+        EMAIL,
+        PHONE_NUMBER,
+        PASSWORD_HASH,
+        FULL_NAME,
+        PROFILE_PICTURE
+      )
+      VALUES (
+        :username,
+        :email,
+        :phoneNumber,
+        :passwordHash,
+        :fullName,
+        :profilePicture
+      )
+      RETURNING USER_ID INTO :userId
+    `;
 
-      const result = await connection.execute(insertSql, {
+    const result = await connection.execute(insertSql, {
+      username,
+      email: email || null,
+      phoneNumber,
+      passwordHash,
+      fullName: fullName || null,
+      profilePicture: profilePicture || null,
+      userId: {
+        dir: oracledb.BIND_OUT,
+        type: oracledb.NUMBER,
+      },
+    });
+
+    const newUserId = result.outBinds.userId[0];
+
+    // Generate authentication token
+    const token = generateToken({
+      userId: newUserId,
+      username,
+    });
+
+    // Update last seen
+    await connection.execute(
+      `
+        UPDATE USERS
+        SET LAST_SEEN = CURRENT_TIMESTAMP
+        WHERE USER_ID = :userId
+      `,
+      {
+        userId: newUserId,
+      },
+    );
+
+    await connection.commit();
+
+    return sendJson(res, 201, {
+      message: "User registered successfully",
+      token,
+      user: {
+        userId: newUserId,
         username,
         email: email || null,
         phoneNumber,
-        passwordHash,
         fullName: fullName || null,
-        userId: {
-          dir: oracledb.BIND_OUT,
-          type: oracledb.NUMBER,
-        },
-      });
+        profilePicture: profilePicture || null,
+      },
+    });
+  } catch (err) {
+    console.error("Registration Error:", err);
 
-      const newUserId = result.outBinds.userId[0];
-
-      const token = generateToken({
-        userId: newUserId,
-        username,
-      });
-
-      await connection.execute(
-        `
-          UPDATE USERS
-          SET LAST_SEEN = CURRENT_TIMESTAMP
-          WHERE USER_ID = :userId
-        `,
-        {
-          userId: newUserId,
-        },
-      );
-
-      await connection.commit();
-
-      return sendJson(res, 201, {
-        message: "User registered successfully",
-        token,
-        user: {
-          userId: newUserId,
-          username,
-          email: email || null,
-          phoneNumber,
-          fullName: fullName || null,
-        },
-      });
-    } catch (err) {
+    if (connection) {
       try {
         await connection.rollback();
       } catch (rollbackError) {
         console.error("Rollback error:", rollbackError);
       }
+    }
 
-      throw err;
-    } finally {
+    return sendJson(res, 500, {
+      error: "Failed to register user",
+    });
+  } finally {
+    if (connection) {
       try {
         await connection.close();
       } catch (closeErr) {
         console.error("Connection close error:", closeErr);
       }
     }
-  } catch (err) {
-    console.error("Registration Error:", err);
-
-    return sendJson(res, 500, {
-      error: "Failed to register user",
-    });
   }
 }
 
