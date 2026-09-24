@@ -1,4 +1,5 @@
 import http from "http";
+import oracledb from "oracledb";
 import { config } from "./config/env.js";
 import { initializeDatabase, closeDatabase } from "./config/database.js";
 import { parseJsonBody } from "./utils/body.parser.js";
@@ -10,6 +11,9 @@ import { handleMessageRoutes } from "./routes/message.routes.js";
 import { handleMediaRoutes } from "./routes/media.routes.js";
 
 const PORT = config.PORT;
+
+// Set OracleDB fetchAsString for CLOBs to avoid stream handling issues
+oracledb.fetchAsString = [oracledb.CLOB];
 
 // Custom Request Router
 const requestHandler = async (req, res) => {
