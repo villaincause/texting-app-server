@@ -9,6 +9,7 @@ import { handleContactRoutes } from "./routes/contact.routes.js";
 import { handleChatRoutes } from "./routes/chat.routes.js";
 import { handleMessageRoutes } from "./routes/message.routes.js";
 import { handleMediaRoutes } from "./routes/media.routes.js";
+import { initializeSocket } from "./socket/socket.js";
 
 const PORT = config.PORT;
 
@@ -105,6 +106,9 @@ const requestHandler = async (req, res) => {
 
 // Create Server
 const server = http.createServer(requestHandler);
+
+// Initialize Socket.io Server Attachment
+initializeSocket(server);
 
 // Initialize DB and Start Server
 async function startServer() {

@@ -20,6 +20,8 @@
     "jsonwebtoken": "^9.0.3",
     "oracledb": "^7.0.1",
     "react-native-contacts": "^8.0.10",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "ws": "^8.21.3"
   },
   "devDependencies": {
