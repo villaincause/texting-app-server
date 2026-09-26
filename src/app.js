@@ -1,5 +1,6 @@
 import http from "http";
 import oracledb from "oracledb";
+import jwt from "jsonwebtoken";
 import { config } from "./config/env.js";
 import { initializeDatabase, closeDatabase } from "./config/database.js";
 import { parseJsonBody } from "./utils/body.parser.js";
@@ -9,6 +10,7 @@ import { handleContactRoutes } from "./routes/contact.routes.js";
 import { handleChatRoutes } from "./routes/chat.routes.js";
 import { handleMessageRoutes } from "./routes/message.routes.js";
 import { handleMediaRoutes } from "./routes/media.routes.js";
+import { handleGroupRoutes } from "./routes/group.routes.js";
 import { initializeSocket } from "./socket/socket.js";
 
 const PORT = config.PORT;
@@ -23,7 +25,7 @@ const requestHandler = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
@@ -34,6 +36,18 @@ const requestHandler = async (req, res) => {
   }
 
   try {
+    // Extract authenticated userId from Bearer JWT token if present
+    const authHeader = req.headers["authorization"];
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = jwt.verify(token, config.JWT_SECRET);
+        req.userId = decoded.userId || decoded.id;
+      } catch (jwtErr) {
+        // Token verification issues can be handled inside specific route handlers or middleware
+      }
+    }
+
     // Parse JSON bodies centrally.
     // Multipart uploads must remain as streams for Busboy.
     const contentType = req.headers["content-type"] || "";
@@ -54,7 +68,7 @@ const requestHandler = async (req, res) => {
         JSON.stringify({
           status: "OK",
           message: "Server & DB Pool operational",
-        }),
+        })
       );
     }
 
@@ -63,6 +77,7 @@ const requestHandler = async (req, res) => {
       const handled = await handleAuthRoutes(req, res);
       if (handled) return;
     }
+
     if (req.url.startsWith("/api/media")) {
       const handled = await handleMediaRoutes(req, res);
       if (handled) return;
@@ -88,6 +103,15 @@ const requestHandler = async (req, res) => {
       if (handled) return;
     }
 
+    // Group & Assignment Module Routes
+    if (
+      req.url.startsWith("/api/groups") ||
+      req.url.startsWith("/api/assignments")
+    ) {
+      const handled = await handleGroupRoutes(req, res, req.userId);
+      if (handled) return;
+    }
+
     // 404 Not Found Fallback
     if (!res.headersSent) {
       res.writeHead(404);
@@ -98,7 +122,7 @@ const requestHandler = async (req, res) => {
     if (!res.headersSent) {
       res.writeHead(500);
       return res.end(
-        JSON.stringify({ error: err.message || "Internal Server Error" }),
+        JSON.stringify({ error: err.message || "Internal Server Error" })
       );
     }
   }
@@ -116,7 +140,7 @@ async function startServer() {
 
   server.listen(PORT, () => {
     console.log(
-      `Server running in ${config.NODE_ENV || "development"} mode on port ${PORT}`,
+      `Server running in ${config.NODE_ENV || "development"} mode on port ${PORT}`
     );
   });
 }
