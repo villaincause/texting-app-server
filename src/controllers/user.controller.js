@@ -1,5 +1,5 @@
-import oracledb from 'oracledb';
-import { getConnection } from '../config/database.js';
+import oracledb from "oracledb";
+import { getConnection } from "../config/database.js";
 
 // Get Current User Profile
 export async function handleGetProfile(req, res) {
@@ -7,7 +7,7 @@ export async function handleGetProfile(req, res) {
 
   if (!userId) {
     res.writeHead(401);
-    return res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return res.end(JSON.stringify({ error: "Unauthorized" }));
   }
 
   let connection;
@@ -20,11 +20,15 @@ export async function handleGetProfile(req, res) {
       WHERE USER_ID = :userId
     `;
 
-    const result = await connection.execute(sql, { userId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const result = await connection.execute(
+      sql,
+      { userId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
+    );
 
     if (!result.rows || result.rows.length === 0) {
       res.writeHead(404);
-      return res.end(JSON.stringify({ error: 'User not found' }));
+      return res.end(JSON.stringify({ error: "User not found" }));
     }
 
     const user = result.rows[0];
@@ -36,28 +40,38 @@ export async function handleGetProfile(req, res) {
     };
 
     res.writeHead(200);
-    return res.end(JSON.stringify({
-      user: {
-        userId: user.USER_ID,
-        username: user.USERNAME,
-        email: user.EMAIL,
-        phoneNumber: user.PHONE_NUMBER,
-        fullName: user.FULL_NAME,
-        profilePicture: user.PROFILE_PICTURE || null,
-        bio: user.BIO || null,
-        accountStatus: user.ACCOUNT_STATUS,
-        createdAt: formatDate(user.CREATED_AT),
-        lastSeen: formatDate(user.LAST_SEEN)
-      }
-    }));
-
+    return res.end(
+      JSON.stringify({
+        user: {
+          userId: user.USER_ID,
+          username: user.USERNAME,
+          email: user.EMAIL,
+          phoneNumber: user.PHONE_NUMBER,
+          fullName: user.FULL_NAME,
+          profilePicture: user.PROFILE_PICTURE || null,
+          bio: user.BIO || null,
+          accountStatus: user.ACCOUNT_STATUS,
+          createdAt: formatDate(user.CREATED_AT),
+          lastSeen: formatDate(user.LAST_SEEN),
+        },
+      }),
+    );
   } catch (err) {
-    console.error('Get Profile Error:', err);
+    console.error("Get Profile Error:", err);
     res.writeHead(500);
-    return res.end(JSON.stringify({ error: 'Failed to retrieve profile', details: err.message }));
+    return res.end(
+      JSON.stringify({
+        error: "Failed to retrieve profile",
+        details: err.message,
+      }),
+    );
   } finally {
     if (connection) {
-      try { await connection.close(); } catch (err) { console.error('Connection close error:', err); }
+      try {
+        await connection.close();
+      } catch (err) {
+        console.error("Connection close error:", err);
+      }
     }
   }
 }
@@ -69,7 +83,7 @@ export async function handleUpdateProfile(req, res) {
 
   if (!userId) {
     res.writeHead(401);
-    return res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return res.end(JSON.stringify({ error: "Unauthorized" }));
   }
 
   let connection;
@@ -84,36 +98,147 @@ export async function handleUpdateProfile(req, res) {
       WHERE USER_ID = :userId
     `;
 
-    const result = await connection.execute(
-      sql,
-      {
-        fullName: fullName || null,
-        bio: bio || null,
-        profilePicture: profilePicture || null,
-        userId
-      }
-    );
+    const result = await connection.execute(sql, {
+      fullName: fullName || null,
+      bio: bio || null,
+      profilePicture: profilePicture || null,
+      userId,
+    });
 
     await connection.commit();
 
     if (result.rowsAffected === 0) {
       res.writeHead(404);
-      return res.end(JSON.stringify({ error: 'User not found or no changes made' }));
+      return res.end(
+        JSON.stringify({ error: "User not found or no changes made" }),
+      );
     }
 
     res.writeHead(200);
-    return res.end(JSON.stringify({ message: 'Profile updated successfully' }));
-
+    return res.end(JSON.stringify({ message: "Profile updated successfully" }));
   } catch (err) {
-    console.error('Update Profile Error:', err);
+    console.error("Update Profile Error:", err);
     if (connection) {
-      try { await connection.rollback(); } catch (rErr) { console.error('Rollback error:', rErr); }
+      try {
+        await connection.rollback();
+      } catch (rErr) {
+        console.error("Rollback error:", rErr);
+      }
     }
     res.writeHead(500);
-    return res.end(JSON.stringify({ error: 'Failed to update profile', details: err.message }));
+    return res.end(
+      JSON.stringify({
+        error: "Failed to update profile",
+        details: err.message,
+      }),
+    );
   } finally {
     if (connection) {
-      try { await connection.close(); } catch (err) { console.error('Connection close error:', err); }
+      try {
+        await connection.close();
+      } catch (err) {
+        console.error("Connection close error:", err);
+      }
+    }
+  }
+}
+
+export async function handleGetUserById(req, res) {
+  const userId = req.params?.userId;
+
+  if (!userId) {
+    res.writeHead(400);
+    return res.end(
+      JSON.stringify({
+        error: "User ID is required",
+      }),
+    );
+  }
+
+  let connection;
+
+  try {
+    connection = await getConnection();
+
+    const sql = `
+      SELECT
+        USER_ID,
+        USERNAME,
+        EMAIL,
+        PHONE_NUMBER,
+        FULL_NAME,
+        PROFILE_PICTURE,
+        BIO,
+        ACCOUNT_STATUS,
+        CREATED_AT,
+        LAST_SEEN,
+        IS_ONLINE
+      FROM USERS
+      WHERE USER_ID = :userId
+    `;
+
+    const result = await connection.execute(
+      sql,
+      { userId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
+    );
+
+    if (!result.rows || result.rows.length === 0) {
+      res.writeHead(404);
+      return res.end(
+        JSON.stringify({
+          error: "User not found",
+        }),
+      );
+    }
+
+    const user = result.rows[0];
+
+    const formatDate = (value) => {
+      if (!value) return null;
+
+      const date = new Date(value);
+
+      return isNaN(date.getTime()) ? String(value) : date.toISOString();
+    };
+
+    res.writeHead(200);
+
+    return res.end(
+      JSON.stringify({
+        user: {
+          userId: user.USER_ID,
+          username: user.USERNAME,
+          email: user.EMAIL,
+          phoneNumber: user.PHONE_NUMBER,
+          fullName: user.FULL_NAME,
+          profilePicture: user.PROFILE_PICTURE || null,
+          bio: user.BIO || null,
+          accountStatus: user.ACCOUNT_STATUS,
+          isOnline: user.IS_ONLINE,
+          createdAt: formatDate(user.CREATED_AT),
+          lastSeen: formatDate(user.LAST_SEEN),
+        },
+      }),
+    );
+  } catch (err) {
+    console.error("Get User By ID Error:", err);
+
+    res.writeHead(500);
+
+    return res.end(
+      JSON.stringify({
+        error: "Failed to retrieve user",
+        details: err.message,
+      }),
+    );
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (err) {
+        console.error("Connection close error:", err);
+      }
     }
   }
 }
