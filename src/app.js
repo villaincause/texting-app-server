@@ -11,7 +11,10 @@ import { handleChatRoutes } from "./routes/chat.routes.js";
 import { handleMessageRoutes } from "./routes/message.routes.js";
 import { handleMediaRoutes } from "./routes/media.routes.js";
 import { handleGroupRoutes } from "./routes/group.routes.js";
+import { handleNotificationRoutes } from "./routes/notification.routes.js";
+import { handleSearchRoutes } from "./routes/search.routes.js";
 import { initializeSocket } from "./socket/socket.js";
+import { startAssignmentReminderScheduler } from "./services/assignment.reminder.js";
 
 const PORT = config.PORT;
 
@@ -112,6 +115,18 @@ const requestHandler = async (req, res) => {
       if (handled) return;
     }
 
+    // Notification Module Routes
+    if (req.url.startsWith("/api/notifications")) {
+      const handled = await handleNotificationRoutes(req, res, req.userId);
+      if (handled) return;
+    }
+
+    // Global Search Module Routes
+    if (req.url.startsWith("/api/search")) {
+      const handled = await handleSearchRoutes(req, res, req.userId);
+      if (handled) return;
+    }
+
     // 404 Not Found Fallback
     if (!res.headersSent) {
       res.writeHead(404);
@@ -131,12 +146,15 @@ const requestHandler = async (req, res) => {
 // Create Server
 const server = http.createServer(requestHandler);
 
-// Initialize Socket.io Server Attachment
-initializeSocket(server);
+// Initialize Socket.io Server Attachment & Extract Direct References
+const { io, userSockets } = initializeSocket(server);
 
 // Initialize DB and Start Server
 async function startServer() {
   await initializeDatabase();
+
+  // Start background assignment due-date reminder scheduler
+  startAssignmentReminderScheduler(io, userSockets);
 
   server.listen(PORT, () => {
     console.log(
