@@ -1,5 +1,5 @@
-import oracledb from 'oracledb';
-import { getConnection } from '../config/database.js';
+import oracledb from "oracledb";
+import { getConnection } from "../config/database.js";
 
 // Get All Users (For member selection / directory)
 export async function handleGetAllUsers(req, res) {
@@ -17,7 +17,7 @@ export async function handleGetAllUsers(req, res) {
     const result = await connection.execute(
       sql,
       {},
-      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
     );
 
     const users = (result.rows || []).map((user) => ({
@@ -31,23 +31,26 @@ export async function handleGetAllUsers(req, res) {
       profilePicture: user.PROFILE_PICTURE || null,
       bio: user.BIO || null,
       accountStatus: user.ACCOUNT_STATUS,
-      isOnline: Boolean(user.IS_ONLINE)
+      isOnline: Boolean(user.IS_ONLINE),
     }));
 
     res.writeHead(200);
     return res.end(JSON.stringify({ users }));
   } catch (err) {
-    console.error('Get All Users Error:', err);
+    console.error("Get All Users Error:", err);
     res.writeHead(500);
     return res.end(
-      JSON.stringify({ error: 'Failed to retrieve users', details: err.message })
+      JSON.stringify({
+        error: "Failed to retrieve users",
+        details: err.message,
+      }),
     );
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (err) {
-        console.error('Connection close error:', err);
+        console.error("Connection close error:", err);
       }
     }
   }
@@ -57,7 +60,7 @@ export async function handleGetAllUsers(req, res) {
 export async function handleGetUserById(req, res, targetUserId) {
   if (!targetUserId) {
     res.writeHead(400);
-    return res.end(JSON.stringify({ error: 'User ID is required' }));
+    return res.end(JSON.stringify({ error: "User ID is required" }));
   }
 
   let connection;
@@ -73,12 +76,12 @@ export async function handleGetUserById(req, res, targetUserId) {
     const result = await connection.execute(
       sql,
       { targetUserId },
-      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
     );
 
     if (!result.rows || result.rows.length === 0) {
       res.writeHead(404);
-      return res.end(JSON.stringify({ error: 'User not found' }));
+      return res.end(JSON.stringify({ error: "User not found" }));
     }
 
     const user = result.rows[0];
@@ -103,22 +106,25 @@ export async function handleGetUserById(req, res, targetUserId) {
           accountStatus: user.ACCOUNT_STATUS,
           isOnline: Boolean(user.IS_ONLINE),
           createdAt: formatDate(user.CREATED_AT),
-          lastSeen: formatDate(user.LAST_SEEN)
-        }
-      })
+          lastSeen: formatDate(user.LAST_SEEN),
+        },
+      }),
     );
   } catch (err) {
-    console.error('Get User By ID Error:', err);
+    console.error("Get User By ID Error:", err);
     res.writeHead(500);
     return res.end(
-      JSON.stringify({ error: 'Failed to retrieve user', details: err.message })
+      JSON.stringify({
+        error: "Failed to retrieve user",
+        details: err.message,
+      }),
     );
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (err) {
-        console.error('Connection close error:', err);
+        console.error("Connection close error:", err);
       }
     }
   }
@@ -130,7 +136,7 @@ export async function handleGetProfile(req, res) {
 
   if (!userId) {
     res.writeHead(401);
-    return res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return res.end(JSON.stringify({ error: "Unauthorized" }));
   }
 
   let connection;
@@ -146,12 +152,12 @@ export async function handleGetProfile(req, res) {
     const result = await connection.execute(
       sql,
       { userId },
-      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
     );
 
     if (!result.rows || result.rows.length === 0) {
       res.writeHead(404);
-      return res.end(JSON.stringify({ error: 'User not found' }));
+      return res.end(JSON.stringify({ error: "User not found" }));
     }
 
     const user = result.rows[0];
@@ -175,22 +181,25 @@ export async function handleGetProfile(req, res) {
           bio: user.BIO || null,
           accountStatus: user.ACCOUNT_STATUS,
           createdAt: formatDate(user.CREATED_AT),
-          lastSeen: formatDate(user.LAST_SEEN)
-        }
-      })
+          lastSeen: formatDate(user.LAST_SEEN),
+        },
+      }),
     );
   } catch (err) {
-    console.error('Get Profile Error:', err);
+    console.error("Get Profile Error:", err);
     res.writeHead(500);
     return res.end(
-      JSON.stringify({ error: 'Failed to retrieve profile', details: err.message })
+      JSON.stringify({
+        error: "Failed to retrieve profile",
+        details: err.message,
+      }),
     );
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (err) {
-        console.error('Connection close error:', err);
+        console.error("Connection close error:", err);
       }
     }
   }
@@ -203,7 +212,7 @@ export async function handleUpdateProfile(req, res) {
 
   if (!userId) {
     res.writeHead(401);
-    return res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return res.end(JSON.stringify({ error: "Unauthorized" }));
   }
 
   let connection;
@@ -222,7 +231,7 @@ export async function handleUpdateProfile(req, res) {
       fullName: fullName || null,
       bio: bio || null,
       profilePicture: profilePicture || null,
-      userId
+      userId,
     });
 
     await connection.commit();
@@ -230,31 +239,34 @@ export async function handleUpdateProfile(req, res) {
     if (result.rowsAffected === 0) {
       res.writeHead(404);
       return res.end(
-        JSON.stringify({ error: 'User not found or no changes made' })
+        JSON.stringify({ error: "User not found or no changes made" }),
       );
     }
 
     res.writeHead(200);
-    return res.end(JSON.stringify({ message: 'Profile updated successfully' }));
+    return res.end(JSON.stringify({ message: "Profile updated successfully" }));
   } catch (err) {
-    console.error('Update Profile Error:', err);
+    console.error("Update Profile Error:", err);
     if (connection) {
       try {
         await connection.rollback();
       } catch (rErr) {
-        console.error('Rollback error:', rErr);
+        console.error("Rollback error:", rErr);
       }
     }
     res.writeHead(500);
     return res.end(
-      JSON.stringify({ error: 'Failed to update profile', details: err.message })
+      JSON.stringify({
+        error: "Failed to update profile",
+        details: err.message,
+      }),
     );
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (err) {
-        console.error('Connection close error:', err);
+        console.error("Connection close error:", err);
       }
     }
   }

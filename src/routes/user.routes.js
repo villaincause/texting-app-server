@@ -37,7 +37,7 @@ export async function handleUserRoutes(req, res) {
       return true;
     }
 
-    if (req.method === 'PUT') {
+    if (req.method === "PUT") {
       await handleUpdateProfile(req, res);
       return true;
     }
