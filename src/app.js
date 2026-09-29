@@ -86,7 +86,8 @@ const requestHandler = async (req, res) => {
       if (handled) return;
     }
 
-    if (req.url.startsWith("/api/user")) {
+    // Updated to handle both /api/user and /api/users
+    if (req.url.startsWith("/api/user") || req.url.startsWith("/api/users")) {
       const handled = await handleUserRoutes(req, res);
       if (handled) return;
     }
