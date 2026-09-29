@@ -51,8 +51,9 @@ export async function handleSendMessage(req, res) {
     if (memberResult.rows.length === 0) {
       if (!res.headersSent) {
         res.writeHead(403);
-        return res
-          .end(JSON.stringify({ error: "You are not a member of this chat" }));
+        return res.end(
+          JSON.stringify({ error: "You are not a member of this chat" }),
+        );
       }
       return;
     }
@@ -223,10 +224,9 @@ export async function handleGetMessages(req, res, chatId) {
     if (memberResult.rows.length === 0) {
       if (!res.headersSent) {
         res.writeHead(403);
-        return res
-          .end(
-            JSON.stringify({ error: "Access denied to this chat history" }),
-          );
+        return res.end(
+          JSON.stringify({ error: "Access denied to this chat history" }),
+        );
       }
       return;
     }
@@ -317,8 +317,7 @@ export async function handleGetMessages(req, res, chatId) {
     console.error("Fetch Messages Error:", err);
     if (!res.headersSent) {
       res.writeHead(500);
-      return res
-        .end(JSON.stringify({ error: "Failed to retrieve messages" }));
+      return res.end(JSON.stringify({ error: "Failed to retrieve messages" }));
     }
   } finally {
     if (connection) {
