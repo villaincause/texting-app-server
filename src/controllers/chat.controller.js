@@ -155,3 +155,166 @@ export async function handleGetUserChats(req, res) {
     }
   }
 }
+
+// Get Group Members for a specified Chat ID
+export async function handleGetGroupMembers(req, res, chatId) {
+  if (!chatId) {
+    if (!res.headersSent) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: 'chatId is required' }));
+    }
+    return;
+  }
+
+  let connection;
+  try {
+    connection = await getConnection();
+
+    const sql = `
+      SELECT 
+        u.USER_ID,
+        u.USERNAME,
+        u.FULL_NAME,
+        u.PHONE_NUMBER,
+        u.PROFILE_PICTURE,
+        u.IS_ONLINE,
+        u.LAST_SEEN,
+        cm.ROLE,
+        cm.JOINED_AT
+      FROM CHAT_MEMBER cm
+      JOIN USERS u ON cm.USER_ID = u.USER_ID
+      WHERE cm.CHAT_ID = :chatId
+      ORDER BY CASE WHEN cm.ROLE = 'ADMIN' THEN 1 ELSE 2 END, u.FULL_NAME ASC
+    `;
+
+    const result = await connection.execute(
+      sql,
+      { chatId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    const members = result.rows.map((m) => ({
+      userId: m.USER_ID,
+      username: m.USERNAME,
+      fullName: m.FULL_NAME,
+      phoneNumber: m.PHONE_NUMBER,
+      profilePicture: m.PROFILE_PICTURE || null,
+      isOnline: Boolean(m.IS_ONLINE),
+      role: m.ROLE,
+      joinedAt: m.JOINED_AT
+    }));
+
+    if (!res.headersSent) {
+      res.writeHead(200);
+      return res.end(JSON.stringify({ members }));
+    }
+  } catch (err) {
+    console.error('Get Group Members Error:', err);
+    if (!res.headersSent) {
+      res.writeHead(500);
+      return res.end(JSON.stringify({ error: 'Failed to fetch group members' }));
+    }
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) {}
+    }
+  }
+}
+
+// Add Member(s) to a Group Chat (supports single targetUserId or memberIds array)
+export async function handleAddGroupMember(req, res, chatId) {
+  const currentUserId = req.user?.userId;
+  const { targetUserId, memberIds, role } = req.body || {};
+
+  // Extract array or single ID
+  const targetIds = memberIds && Array.isArray(memberIds)
+    ? memberIds
+    : targetUserId
+    ? [targetUserId]
+    : [];
+
+  if (!chatId || targetIds.length === 0) {
+    if (!res.headersSent) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: 'chatId and targetUserId (or memberIds) are required' }));
+    }
+    return;
+  }
+
+  let connection;
+  try {
+    connection = await getConnection();
+
+    // 1. Verify that the requesting user is a member of this chat
+    const checkAuthSql = `
+      SELECT ROLE 
+      FROM CHAT_MEMBER 
+      WHERE CHAT_ID = :chatId AND USER_ID = :currentUserId
+    `;
+    const authResult = await connection.execute(
+      checkAuthSql,
+      { chatId, currentUserId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
+    if (!authResult.rows || authResult.rows.length === 0) {
+      if (!res.headersSent) {
+        res.writeHead(403);
+        return res.end(JSON.stringify({ error: 'Not authorized to modify this chat' }));
+      }
+      return;
+    }
+
+    // 2. Insert new member(s) safely ignoring already added users
+    const insertSql = `
+      INSERT INTO CHAT_MEMBER (CHAT_ID, USER_ID, ROLE, JOINED_AT)
+      SELECT :chatId, :targetUserId, :role, SYSDATE
+      FROM DUAL
+      WHERE NOT EXISTS (
+        SELECT 1 
+        FROM CHAT_MEMBER 
+        WHERE CHAT_ID = :chatId AND USER_ID = :targetUserId
+      )
+    `;
+
+    let totalInserted = 0;
+    const assignedRole = role || 'MEMBER';
+
+    for (const uid of targetIds) {
+      const result = await connection.execute(insertSql, {
+        chatId,
+        targetUserId: uid,
+        role: assignedRole
+      });
+      totalInserted += result.rowsAffected;
+    }
+
+    await connection.commit();
+
+    if (totalInserted === 0) {
+      if (!res.headersSent) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Selected user(s) are already members of this chat' }));
+      }
+      return;
+    }
+
+    if (!res.headersSent) {
+      res.writeHead(201);
+      return res.end(JSON.stringify({ message: `${totalInserted} member(s) added successfully` }));
+    }
+  } catch (err) {
+    console.error('Add Group Member Error:', err);
+    if (connection) {
+      try { await connection.rollback(); } catch (rErr) {}
+    }
+    if (!res.headersSent) {
+      res.writeHead(500);
+      return res.end(JSON.stringify({ error: 'Failed to add member(s) to group' }));
+    }
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) {}
+    }
+  }
+}
