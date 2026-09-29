@@ -38,6 +38,9 @@ const requestHandler = async (req, res) => {
     return res.end();
   }
 
+  // Debug Terminal Logger
+  console.log(`[${new Date().toISOString()}] ${req.method} -> ${req.url}`);
+
   try {
     // Extract authenticated userId from Bearer JWT token if present
     const authHeader = req.headers["authorization"];
@@ -107,11 +110,17 @@ const requestHandler = async (req, res) => {
       if (handled) return;
     }
 
-    // Group & Assignment Module Routes
-    if (
-      req.url.startsWith("/api/groups") ||
-      req.url.startsWith("/api/assignments")
-    ) {
+    // Handle /api/assignments with handleChatRoutes first (for submission endpoints)
+    if (req.url.startsWith("/api/assignments")) {
+      let handled = await handleChatRoutes(req, res);
+      if (!handled) {
+        handled = await handleGroupRoutes(req, res, req.userId);
+      }
+      if (handled) return;
+    }
+
+    // Group Module Routes
+    if (req.url.startsWith("/api/groups")) {
       const handled = await handleGroupRoutes(req, res, req.userId);
       if (handled) return;
     }
@@ -130,6 +139,7 @@ const requestHandler = async (req, res) => {
 
     // 404 Not Found Fallback
     if (!res.headersSent) {
+      console.warn(`[404 NOT FOUND] Unhandled Route: ${req.method} ${req.url}`);
       res.writeHead(404);
       return res.end(JSON.stringify({ error: "Route not found" }));
     }

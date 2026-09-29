@@ -3,7 +3,7 @@ import { getConnection } from '../config/database.js';
 
 // Access or initiate a 1-on-1 DIRECT chat with a contact
 export async function handleCreateOrGetDirectChat(req, res) {
-  const userId = req.user?.userId;
+  const userId = req.user?.userId || req.userId;
   const { recipientId } = req.body || {};
 
   if (!recipientId) {
@@ -99,7 +99,7 @@ export async function handleCreateOrGetDirectChat(req, res) {
 
 // Get all active chats for the logged-in user with latest message preview
 export async function handleGetUserChats(req, res) {
-  const userId = req.user?.userId;
+  const userId = req.user?.userId || req.userId;
 
   let connection;
   try {
@@ -122,7 +122,10 @@ export async function handleGetUserChats(req, res) {
         u.PROFILE_PICTURE AS OTHER_PROFILE_PICTURE,
         u.IS_ONLINE AS OTHER_IS_ONLINE,
         u.LAST_SEEN AS OTHER_LAST_SEEN,
-        NVL(cnt.SAVED_NAME, u.FULL_NAME) AS DISPLAY_NAME
+        CASE 
+          WHEN c.CHAT_TYPE = 'GROUP' THEN COALESCE(c.TITLE, 'Group Chat')
+          ELSE COALESCE(cnt.SAVED_NAME, u.FULL_NAME, u.USERNAME, 'Unknown User')
+        END AS CHAT_NAME
       FROM CHAT c
       JOIN CHAT_MEMBER cm ON c.CHAT_ID = cm.CHAT_ID
       LEFT JOIN MESSAGE m ON c.LAST_MESSAGE_ID = m.MESSAGE_ID
@@ -139,9 +142,43 @@ export async function handleGetUserChats(req, res) {
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
 
+    // Map formatted rows so client frontends get intuitive camelCase & upper-case properties
+    const formattedChats = (result.rows || []).map((row) => {
+      const isGroup = row.CHAT_TYPE === 'GROUP';
+      const resolvedName =
+        row.CHAT_NAME ||
+        row.TITLE ||
+        row.OTHER_FULL_NAME ||
+        row.OTHER_USERNAME ||
+        (isGroup ? 'Group Chat' : 'Unknown');
+
+      return {
+        ...row,
+        chatId: row.CHAT_ID,
+        chatType: row.CHAT_TYPE,
+        isGroup,
+        name: resolvedName,
+        title: resolvedName,
+        chatName: resolvedName,
+        DISPLAY_NAME: resolvedName,
+        lastMessage: row.LAST_MESSAGE_TEXT || '',
+        lastMessageTime: row.LAST_MESSAGE_SENT_AT || row.CREATED_AT,
+        otherUser: !isGroup
+          ? {
+              userId: row.OTHER_USER_ID,
+              username: row.OTHER_USERNAME,
+              fullName: row.OTHER_FULL_NAME,
+              profilePicture: row.OTHER_PROFILE_PICTURE || null,
+              isOnline: Boolean(row.OTHER_IS_ONLINE),
+              lastSeen: row.OTHER_LAST_SEEN
+            }
+          : null
+      };
+    });
+
     if (!res.headersSent) {
       res.writeHead(200);
-      return res.end(JSON.stringify({ chats: result.rows }));
+      return res.end(JSON.stringify({ chats: formattedChats }));
     }
   } catch (err) {
     console.error('Fetch Chats Error:', err);
@@ -223,7 +260,7 @@ export async function handleGetGroupMembers(req, res, chatId) {
 
 // Add Member(s) to a Group Chat (supports single targetUserId or memberIds array)
 export async function handleAddGroupMember(req, res, chatId) {
-  const currentUserId = req.user?.userId;
+  const currentUserId = req.user?.userId || req.userId;
   const { targetUserId, memberIds, role } = req.body || {};
 
   // Extract array or single ID
