@@ -59,7 +59,7 @@ export async function handleSendMessage(req, res) {
 
     // Fetch Sender Info for the broadcast payload
     const senderSql = `
-      SELECT USERNAME, FULL_NAME, PROFILE_PICTURE_URL 
+      SELECT USERNAME, FULL_NAME, PROFILE_PICTURE 
       FROM USERS WHERE USER_ID = :senderId
     `;
     const senderResult = await connection.execute(
@@ -150,7 +150,7 @@ export async function handleSendMessage(req, res) {
       SENDER_ID: senderId,
       SENDER_USERNAME: senderInfo.USERNAME,
       SENDER_FULL_NAME: senderInfo.FULL_NAME,
-      SENDER_PROFILE_PICTURE: senderInfo.PROFILE_PICTURE_URL,
+      SENDER_PROFILE_PICTURE: senderInfo.PROFILE_PICTURE,
       MESSAGE_TEXT: messageText,
       MESSAGE_TYPE: messageType,
       REPLY_TO: replyTo,
@@ -239,7 +239,7 @@ export async function handleGetMessages(req, res, chatId) {
         m.SENDER_ID,
         u.USERNAME AS SENDER_USERNAME,
         u.FULL_NAME AS SENDER_FULL_NAME,
-        u.PROFILE_PICTURE_URL AS SENDER_PROFILE_PICTURE,
+        u.PROFILE_PICTURE AS SENDER_PROFILE_PICTURE,
         m.MESSAGE_TEXT,
         m.MESSAGE_TYPE,
         m.REPLY_TO,
